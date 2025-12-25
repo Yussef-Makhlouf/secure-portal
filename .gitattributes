@@ -1,5 +1,0 @@
-natai/natai.html filter=lfs diff=lfs merge=lfs -text
-fainew/fainew.html !text !filter !merge !diff
-foodai/foodai.html !text !filter !merge !diff
-stylee/stylee.html !text !filter !merge !diff
-
