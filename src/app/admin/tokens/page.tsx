@@ -169,7 +169,7 @@ export default function TokensListPage() {
                                     <td className="p-4">
                                         <div className="flex items-center justify-end gap-2">
                                             <button
-                                                onClick={() => copyToClipboard(token.token)}
+                                                onClick={() => copyToClipboard(token.token, token.allowedPages)}
                                                 className="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-all"
                                                 title="Copy access URL"
                                             >
