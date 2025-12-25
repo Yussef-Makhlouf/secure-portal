@@ -1,26 +1,40 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-const AVAILABLE_PAGES = [
-    { id: 'fainew', name: 'Fainew', description: 'AI Financial Platform' },
-    { id: 'foodai', name: 'FoodAI', description: 'Food Technology AI' },
-    { id: 'natai', name: 'NatAI', description: 'Natural AI Solutions' },
-    { id: 'stylee', name: 'Stylee', description: 'Style & Fashion AI' },
-    { id: 'tarzi', name: 'Tarzi', description: 'Custom AI Platform' },
-];
+interface Project {
+    id: string;
+    name: string;
+    description: string;
+}
 
 export default function CreateTokenPage() {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
+    const [projectsLoading, setProjectsLoading] = useState(true);
+    const [availablePages, setAvailablePages] = useState<Project[]>([]);
     const [createdToken, setCreatedToken] = useState<string | null>(null);
+
+    // Initial fetch of projects
+    useEffect(() => {
+        fetch('/api/projects')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    setAvailablePages(data.data);
+                }
+            })
+            .catch(err => console.error('Failed to fetch projects', err))
+            .finally(() => setProjectsLoading(false));
+    }, []);
 
     const [formData, setFormData] = useState({
         clientName: '',
         clientEmail: '',
         allowedPages: [] as string[],
+        allowedDomains: '', // Comma separated string for input
         expirationDays: '30',
         notes: '',
     });
@@ -30,11 +44,18 @@ export default function CreateTokenPage() {
         setLoading(true);
 
         try {
+            // Process domains: split by comma and trim
+            const domainsList = formData.allowedDomains
+                .split(',')
+                .map(d => d.trim())
+                .filter(d => d.length > 0);
+
             const res = await fetch('/api/tokens', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     ...formData,
+                    allowedDomains: domainsList,
                     expirationDays: parseInt(formData.expirationDays),
                 }),
             });
@@ -66,16 +87,39 @@ export default function CreateTokenPage() {
     const selectAllPages = () => {
         setFormData(prev => ({
             ...prev,
-            allowedPages: AVAILABLE_PAGES.map(p => p.id),
+            allowedPages: availablePages.map(p => p.id),
         }));
     };
 
     const copyAccessUrl = () => {
-        const url = `${window.location.origin}/t/${createdToken}/`;
+        // Construct smart URL
+        let domain = window.location.host;
+        const enteredDomains = formData.allowedDomains.split(',').map(d => d.trim()).filter(d => d.length > 0);
+
+        if (enteredDomains.length === 1) {
+            domain = enteredDomains[0];
+        }
+
+        // Add protocol if missing
+        const protocol = window.location.protocol;
+        const items = formData.allowedPages;
+        const pagePart = items.length === 1 ? `/${items[0]}` : '/[project]';
+
+        const url = `${protocol}//${domain}/t/${createdToken}${pagePart}`;
         navigator.clipboard.writeText(url);
     };
 
     if (createdToken) {
+        // Determine display URL for success screen
+        let displayDomain = typeof window !== 'undefined' ? window.location.host : '';
+        const enteredDomains = formData.allowedDomains.split(',').map(d => d.trim()).filter(d => d.length > 0);
+        if (enteredDomains.length === 1) {
+            displayDomain = enteredDomains[0];
+        }
+
+        const items = formData.allowedPages;
+        const pagePart = items.length === 1 ? `/${items[0]}` : '/[project]';
+
         return (
             <div className="max-w-2xl mx-auto">
                 <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-700/50 p-8">
@@ -92,7 +136,7 @@ export default function CreateTokenPage() {
                         <div className="bg-slate-900/50 rounded-xl p-4 mb-6">
                             <p className="text-xs text-slate-500 mb-2">Access URL</p>
                             <code className="text-indigo-400 text-sm break-all">
-                                {window.location.origin}/t/{createdToken}/[page]
+                                {typeof window !== 'undefined' ? window.location.protocol : 'http:'}//{displayDomain}/t/{createdToken}{pagePart}
                             </code>
                         </div>
 
@@ -163,10 +207,28 @@ export default function CreateTokenPage() {
                     </div>
                 </div>
 
+                {/* Domain Restriction */}
+                <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-700/50 p-6">
+                    <h2 className="text-lg font-semibold text-white mb-4">Domain Restriction</h2>
+                    <p className="text-sm text-slate-400 mb-4">
+                        Leave empty to allow access from any domain. Enter specific domains (e.g. <code>example.com</code>) to restrict access.
+                    </p>
+                    <div>
+                        <label className="block text-sm text-slate-400 mb-2">Allowed Domains (comma separated)</label>
+                        <input
+                            type="text"
+                            value={formData.allowedDomains}
+                            onChange={(e) => setFormData(prev => ({ ...prev, allowedDomains: e.target.value }))}
+                            className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                            placeholder="e.g. mysite.com, portal.company.com"
+                        />
+                    </div>
+                </div>
+
                 {/* Allowed Pages */}
                 <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-700/50 p-6">
                     <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-white">Allowed Pages *</h2>
+                        <h2 className="text-lg font-semibold text-white">Allowed Projects *</h2>
                         <button
                             type="button"
                             onClick={selectAllPages}
@@ -176,38 +238,44 @@ export default function CreateTokenPage() {
                         </button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {AVAILABLE_PAGES.map((page) => (
-                            <label
-                                key={page.id}
-                                className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${formData.allowedPages.includes(page.id)
+                    {projectsLoading ? (
+                        <div className="text-center py-8 text-slate-500">Loading projects...</div>
+                    ) : availablePages.length === 0 ? (
+                        <div className="text-center py-8 text-slate-500">No projects found in directory.</div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {availablePages.map((page) => (
+                                <label
+                                    key={page.id}
+                                    className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${formData.allowedPages.includes(page.id)
                                         ? 'border-indigo-500 bg-indigo-500/10'
                                         : 'border-slate-700 hover:border-slate-600'
-                                    }`}
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={formData.allowedPages.includes(page.id)}
-                                    onChange={() => togglePage(page.id)}
-                                    className="sr-only"
-                                />
-                                <div className={`w-5 h-5 rounded border flex items-center justify-center ${formData.allowedPages.includes(page.id)
+                                        }`}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.allowedPages.includes(page.id)}
+                                        onChange={() => togglePage(page.id)}
+                                        className="sr-only"
+                                    />
+                                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${formData.allowedPages.includes(page.id)
                                         ? 'bg-indigo-600 border-indigo-600'
                                         : 'border-slate-600'
-                                    }`}>
-                                    {formData.allowedPages.includes(page.id) && (
-                                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                        </svg>
-                                    )}
-                                </div>
-                                <div>
-                                    <p className="text-white font-medium">{page.name}</p>
-                                    <p className="text-slate-500 text-xs">{page.description}</p>
-                                </div>
-                            </label>
-                        ))}
-                    </div>
+                                        }`}>
+                                        {formData.allowedPages.includes(page.id) && (
+                                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                            </svg>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <p className="text-white font-medium">{page.name}</p>
+                                        <p className="text-slate-500 text-xs">{page.description}</p>
+                                    </div>
+                                </label>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Expiration */}
@@ -221,8 +289,8 @@ export default function CreateTokenPage() {
                                 type="button"
                                 onClick={() => setFormData(prev => ({ ...prev, expirationDays: days }))}
                                 className={`p-3 rounded-xl text-center transition-all ${formData.expirationDays === days
-                                        ? 'bg-indigo-600 text-white'
-                                        : 'bg-slate-700/50 text-slate-400 hover:bg-slate-700'
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-slate-700/50 text-slate-400 hover:bg-slate-700'
                                     }`}
                             >
                                 <p className="text-lg font-bold">{days}</p>

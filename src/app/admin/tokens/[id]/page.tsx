@@ -4,13 +4,11 @@ import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-const AVAILABLE_PAGES = [
-    { id: 'fainew', name: 'Fainew', description: 'AI Financial Platform' },
-    { id: 'foodai', name: 'FoodAI', description: 'Food Technology AI' },
-    { id: 'natai', name: 'NatAI', description: 'Natural AI Solutions' },
-    { id: 'stylee', name: 'Stylee', description: 'Style & Fashion AI' },
-    { id: 'tarzi', name: 'Tarzi', description: 'Custom AI Platform' },
-];
+interface Project {
+    id: string;
+    name: string;
+    description: string;
+}
 
 interface Token {
     _id: string;
@@ -18,6 +16,7 @@ interface Token {
     clientName: string;
     clientEmail?: string;
     allowedPages: string[];
+    allowedDomains: string[];
     expiresAt: string;
     isActive: boolean;
     createdAt: string;
@@ -43,16 +42,40 @@ export default function EditTokenPage({ params }: PageProps) {
     const [saving, setSaving] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+    // Projects state
+    const [availablePages, setAvailablePages] = useState<Project[]>([]);
+    const [projectsLoading, setProjectsLoading] = useState(true);
+
     const [formData, setFormData] = useState({
         clientName: '',
         clientEmail: '',
         allowedPages: [] as string[],
+        allowedDomains: '',
         isActive: true,
         notes: '',
     });
 
     useEffect(() => {
-        fetchToken();
+        // Fetch projects first or in parallel
+        const loadData = async () => {
+            try {
+                // Fetch Projects
+                const projectsRes = await fetch('/api/projects');
+                const projectsData = await projectsRes.json();
+                if (projectsData.success) {
+                    setAvailablePages(projectsData.data);
+                }
+            } catch (err) {
+                console.error('Failed to fetch projects', err);
+            } finally {
+                setProjectsLoading(false);
+            }
+
+            // Fetch Token
+            fetchToken();
+        };
+
+        loadData();
     }, [resolvedParams.id]);
 
     const fetchToken = async () => {
@@ -65,6 +88,7 @@ export default function EditTokenPage({ params }: PageProps) {
                     clientName: data.data.clientName,
                     clientEmail: data.data.clientEmail || '',
                     allowedPages: data.data.allowedPages,
+                    allowedDomains: data.data.allowedDomains ? data.data.allowedDomains.join(', ') : '',
                     isActive: data.data.isActive,
                     notes: data.data.notes || '',
                 });
@@ -81,10 +105,19 @@ export default function EditTokenPage({ params }: PageProps) {
         setSaving(true);
 
         try {
+            // Process domains: split by comma and trim
+            const domainsList = formData.allowedDomains
+                .split(',')
+                .map(d => d.trim())
+                .filter(d => d.length > 0);
+
             const res = await fetch(`/api/tokens/${resolvedParams.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData),
+                body: JSON.stringify({
+                    ...formData,
+                    allowedDomains: domainsList
+                }),
             });
 
             const data = await res.json();
@@ -126,7 +159,17 @@ export default function EditTokenPage({ params }: PageProps) {
 
     const copyAccessUrl = () => {
         if (token) {
-            const url = `${window.location.origin}/t/${token.token}/`;
+            // Construct smart URL based on domains
+            let domain = window.location.host;
+            if (token.allowedDomains && token.allowedDomains.length === 1) {
+                domain = token.allowedDomains[0];
+            }
+
+            const protocol = window.location.protocol;
+            const items = token.allowedPages;
+            const pagePart = items.length === 1 ? `/${items[0]}` : '';
+
+            const url = `${protocol}//${domain}/t/${token.token}${pagePart}`;
             navigator.clipboard.writeText(url);
         }
     };
@@ -209,42 +252,66 @@ export default function EditTokenPage({ params }: PageProps) {
                             </div>
                         </div>
 
+                        {/* Domain Restriction */}
+                        <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-700/50 p-6">
+                            <h2 className="text-lg font-semibold text-white mb-4">Domain Restriction</h2>
+                            <p className="text-sm text-slate-400 mb-4">
+                                Leave empty to allow access from any domain. Enter specific domains (e.g. <code>example.com</code>) to restrict access.
+                            </p>
+                            <div>
+                                <label className="block text-sm text-slate-400 mb-2">Allowed Domains (comma separated)</label>
+                                <input
+                                    type="text"
+                                    value={formData.allowedDomains}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, allowedDomains: e.target.value }))}
+                                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                                    placeholder="e.g. mysite.com, portal.company.com"
+                                />
+                            </div>
+                        </div>
+
                         {/* Allowed Pages */}
                         <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-700/50 p-6">
-                            <h2 className="text-lg font-semibold text-white mb-4">Allowed Pages</h2>
+                            <h2 className="text-lg font-semibold text-white mb-4">Allowed Projects</h2>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {AVAILABLE_PAGES.map((page) => (
-                                    <label
-                                        key={page.id}
-                                        className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${formData.allowedPages.includes(page.id)
+                            {projectsLoading ? (
+                                <div className="text-center py-8 text-slate-500">Loading projects...</div>
+                            ) : availablePages.length === 0 ? (
+                                <div className="text-center py-8 text-slate-500">No projects found.</div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {availablePages.map((page) => (
+                                        <label
+                                            key={page.id}
+                                            className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${formData.allowedPages.includes(page.id)
                                                 ? 'border-indigo-500 bg-indigo-500/10'
                                                 : 'border-slate-700 hover:border-slate-600'
-                                            }`}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={formData.allowedPages.includes(page.id)}
-                                            onChange={() => togglePage(page.id)}
-                                            className="sr-only"
-                                        />
-                                        <div className={`w-5 h-5 rounded border flex items-center justify-center ${formData.allowedPages.includes(page.id)
+                                                }`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={formData.allowedPages.includes(page.id)}
+                                                onChange={() => togglePage(page.id)}
+                                                className="sr-only"
+                                            />
+                                            <div className={`w-5 h-5 rounded border flex items-center justify-center ${formData.allowedPages.includes(page.id)
                                                 ? 'bg-indigo-600 border-indigo-600'
                                                 : 'border-slate-600'
-                                            }`}>
-                                            {formData.allowedPages.includes(page.id) && (
-                                                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                                </svg>
-                                            )}
-                                        </div>
-                                        <div>
-                                            <p className="text-white font-medium">{page.name}</p>
-                                            <p className="text-slate-500 text-xs">{page.description}</p>
-                                        </div>
-                                    </label>
-                                ))}
-                            </div>
+                                                }`}>
+                                                {formData.allowedPages.includes(page.id) && (
+                                                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <p className="text-white font-medium">{page.name}</p>
+                                                <p className="text-slate-500 text-xs">{page.description}</p>
+                                            </div>
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         {/* Status & Notes */}
@@ -306,8 +373,8 @@ export default function EditTokenPage({ params }: PageProps) {
                             <div>
                                 <p className="text-xs text-slate-500">Status</p>
                                 <p className={`font-medium ${token.isActive && new Date(token.expiresAt) > new Date()
-                                        ? 'text-emerald-400'
-                                        : 'text-red-400'
+                                    ? 'text-emerald-400'
+                                    : 'text-red-400'
                                     }`}>
                                     {token.isActive && new Date(token.expiresAt) > new Date() ? 'Active' : 'Inactive/Expired'}
                                 </p>

@@ -12,6 +12,7 @@ export interface IToken extends Document {
     clientName: string;
     clientEmail?: string;
     allowedPages: string[];
+    allowedDomains: string[];
     expiresAt: Date;
     isActive: boolean;
     createdAt: Date;
@@ -47,10 +48,15 @@ const TokenSchema = new Schema<IToken>(
             trim: true,
             lowercase: true,
         },
+
         allowedPages: {
             type: [String],
             required: true,
             default: [],
+        },
+        allowedDomains: {
+            type: [String],
+            default: [], // Empty means all domains are allowed (backward compatibility)
         },
         expiresAt: {
             type: Date,

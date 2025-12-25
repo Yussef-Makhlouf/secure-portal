@@ -46,7 +46,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         const {
             clientName,
             clientEmail,
+ 
             allowedPages,
+            allowedDomains,
             expiresAt,
             isActive,
             notes,
@@ -56,7 +58,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         if (clientName !== undefined) updateData.clientName = clientName;
         if (clientEmail !== undefined) updateData.clientEmail = clientEmail;
+        if (clientEmail !== undefined) updateData.clientEmail = clientEmail;
         if (allowedPages !== undefined) updateData.allowedPages = allowedPages;
+        if (allowedDomains !== undefined) updateData.allowedDomains = allowedDomains;
         if (expiresAt !== undefined) updateData.expiresAt = new Date(expiresAt);
         if (isActive !== undefined) updateData.isActive = isActive;
         if (notes !== undefined) updateData.notes = notes;

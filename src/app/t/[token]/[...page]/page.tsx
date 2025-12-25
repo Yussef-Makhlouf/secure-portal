@@ -20,9 +20,10 @@ export default async function ProtectedPage({ params }: PageProps) {
     const headersList = await headers();
     const ip = headersList.get('x-forwarded-for') || headersList.get('x-real-ip') || 'unknown';
     const userAgent = headersList.get('user-agent') || undefined;
+    const host = headersList.get('host') || undefined;
 
     // Validate the token
-    const result = await validateToken(token, pageName, { ip, userAgent });
+    const result = await validateToken(token, pageName, { ip, userAgent, host });
 
     if (!result.valid) {
         // Redirect to access restricted page with reason
@@ -30,23 +31,33 @@ export default async function ProtectedPage({ params }: PageProps) {
     }
 
     // Try to load the protected HTML content
-    const htmlFileName = `${pageName}.html`;
-    const protectedPath = path.join(process.cwd(), '..', htmlFileName);
+    // Priority:
+    // 1. {project}/{project}.html (e.g. fainew/fainew.html)
+    // 2. {project}/index.html
+    // 3. protected-content/{project}.html (legacy fallback)
 
     let htmlContent = '';
+    const rootDir = process.cwd();
+
+    // Check dynamic project paths
+    const projectPath = path.join(rootDir, pageName);
+    const specificHtmlPath = path.join(projectPath, `${pageName}.html`);
+    const indexHtmlPath = path.join(projectPath, 'index.html');
+    const legacyPath = path.join(rootDir, 'protected-content', `${pageName}.html`);
+    const fallbackPath = path.join(rootDir, '..', `${pageName}.html`); // Check parent dir just in case
 
     try {
-        // Read from parent directory where original HTML files are
-        if (fs.existsSync(protectedPath)) {
-            htmlContent = fs.readFileSync(protectedPath, 'utf-8');
+        if (fs.existsSync(specificHtmlPath)) {
+            htmlContent = fs.readFileSync(specificHtmlPath, 'utf-8');
+        } else if (fs.existsSync(indexHtmlPath)) {
+            htmlContent = fs.readFileSync(indexHtmlPath, 'utf-8');
+        } else if (fs.existsSync(legacyPath)) {
+            htmlContent = fs.readFileSync(legacyPath, 'utf-8');
+        } else if (fs.existsSync(fallbackPath)) {
+            htmlContent = fs.readFileSync(fallbackPath, 'utf-8');
         } else {
-            // Try protected-content folder
-            const altPath = path.join(process.cwd(), 'protected-content', htmlFileName);
-            if (fs.existsSync(altPath)) {
-                htmlContent = fs.readFileSync(altPath, 'utf-8');
-            } else {
-                redirect('/access-restricted?reason=PAGE_NOT_FOUND');
-            }
+            console.error(`Project content not found for: ${pageName}`);
+            redirect('/access-restricted?reason=PAGE_NOT_FOUND');
         }
     } catch (error) {
         console.error('Error loading protected content:', error);

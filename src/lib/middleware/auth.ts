@@ -1,18 +1,20 @@
 import { connectToDatabase } from '@/lib/database';
 import Token, { IToken } from '@/lib/models/token';
 
+import { getAvailableProjects } from '../project-utils';
+
 export type ValidationResult =
     | { valid: true; token: IToken; }
-    | { valid: false; reason: 'TOKEN_NOT_FOUND' | 'TOKEN_INACTIVE' | 'TOKEN_EXPIRED' | 'PAGE_NOT_ALLOWED'; };
+    | { valid: false; reason: 'TOKEN_NOT_FOUND' | 'TOKEN_INACTIVE' | 'TOKEN_EXPIRED' | 'PAGE_NOT_ALLOWED' | 'DOMAIN_NOT_ALLOWED'; };
 
 /**
  * Validates a token for accessing a specific page
- * Checks: existence → active status → expiration → page permission
+ * Checks: existence → active status → expiration → domain → page permission
  */
 export async function validateToken(
     tokenValue: string,
     page: string,
-    logAccess?: { ip: string; userAgent?: string }
+    logAccess?: { ip: string; userAgent?: string; host?: string }
 ): Promise<ValidationResult> {
     try {
         await connectToDatabase();
@@ -35,7 +37,29 @@ export async function validateToken(
             return { valid: false, reason: 'TOKEN_EXPIRED' };
         }
 
-        // 4. Check if page is allowed
+        // 4. Check if domain is allowed
+        if (logAccess?.host && tokenDoc.allowedDomains && tokenDoc.allowedDomains.length > 0) {
+            // Remove port if present for comparison? Usually host includes port.
+            // Let's assume strict match for now, or maybe check if array includes the hostname.
+            // A safer check: if host is 'localhost:3000', and allowed is 'localhost', it might fail.
+            // But usually we want to restrict to 'example.com'.
+
+            // Normalize host: remove port if it's 80 or 443, or just keep it as is?
+            // Next.js headers().get('host') usually includes port if non-standard.
+
+            const requestHost = logAccess.host;
+            const isDomainAllowed = tokenDoc.allowedDomains.some(domain => {
+                // strict match or endsWith for subdomains?
+                // Let's do exact match first as requested.
+                return domain === requestHost || requestHost.endsWith('.' + domain);
+            });
+
+            if (!isDomainAllowed) {
+                return { valid: false, reason: 'DOMAIN_NOT_ALLOWED' };
+            }
+        }
+
+        // 5. Check if page is allowed
         // Normalize page name (remove .html extension if present)
         const normalizedPage = page.replace(/\.html$/i, '').toLowerCase();
         const allowedNormalized = tokenDoc.allowedPages.map(p =>
@@ -72,15 +96,3 @@ export async function validateToken(
     }
 }
 
-/**
- * Get all available protected pages
- */
-export function getAvailablePages(): string[] {
-    return [
-        'fainew',
-        'foodai',
-        'natai',
-        'stylee',
-        'tarzi',
-    ];
-}
