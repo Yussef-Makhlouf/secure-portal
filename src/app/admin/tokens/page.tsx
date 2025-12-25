@@ -52,8 +52,9 @@ export default function TokensListPage() {
         }
     };
 
-    const copyToClipboard = (token: string) => {
-        const url = `${window.location.origin}/t/${token}/`;
+    const copyToClipboard = (token: string, allowedPages: string[]) => {
+        const page = allowedPages.length > 0 ? allowedPages[0] : '';
+        const url = `${window.location.origin}/t/${token}/${page}`;
         navigator.clipboard.writeText(url);
         // Could add a toast notification here
     };
@@ -97,8 +98,8 @@ export default function TokensListPage() {
                         key={status}
                         onClick={() => setFilter(status)}
                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${filter === status
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
                             }`}
                     >
                         {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -179,8 +180,8 @@ export default function TokensListPage() {
                                             <button
                                                 onClick={() => toggleStatus(token._id, token.isActive)}
                                                 className={`p-2 rounded-lg transition-all ${token.isActive
-                                                        ? 'text-amber-400 hover:bg-amber-500/20'
-                                                        : 'text-emerald-400 hover:bg-emerald-500/20'
+                                                    ? 'text-amber-400 hover:bg-amber-500/20'
+                                                    : 'text-emerald-400 hover:bg-emerald-500/20'
                                                     }`}
                                                 title={token.isActive ? 'Deactivate' : 'Activate'}
                                             >
